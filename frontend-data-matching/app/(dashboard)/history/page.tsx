@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Calendar, Eye, Download, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function HistoryPage() {
   const [historyList, setHistoryList] = useState<any[]>([]);
@@ -45,7 +46,7 @@ export default function HistoryPage() {
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
               <tr>
-                <th className="p-4">ID</th>
+                {/* <th className="p-4">ID</th> */}
                 <th className="p-4">Waktu Eksekusi</th>
                 <th className="p-4">File Master & Target</th>
                 <th className="p-4">Total Data</th>
@@ -66,7 +67,7 @@ export default function HistoryPage() {
 
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                    <td className="p-4 font-mono font-semibold text-slate-900">#{item.id}</td>
+                    {/* <td className="p-4 font-mono font-semibold text-slate-900">#{item.id}</td> */}
                     <td className="p-4 text-slate-600">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -85,10 +86,15 @@ export default function HistoryPage() {
                       <span className="text-[11px] text-slate-400 ml-1.5">({attr.matched_count} match)</span>
                     </td>
                     <td className="p-4 text-center">
-                      <button className="p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-blue-600 transition" title="Lihat Detail Data">
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
+  {/* Menggunakan documentId (Strapi v5) atau id (Strapi v4) */}
+  <Link 
+    href={`/history/${item.documentId || item.id}`} 
+    className="inline-block p-1.5 hover:bg-slate-100 rounded text-slate-600 hover:text-blue-600 transition" 
+    title="Lihat Detail Data"
+  >
+    <Eye className="w-4 h-4" />
+  </Link>
+</td>
                   </tr>
                 );
               })}
