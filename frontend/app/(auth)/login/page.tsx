@@ -12,6 +12,7 @@ import {
   AlertCircle, 
   Loader2 
 } from 'lucide-react';
+import Image from 'next/image';
 
 function LoginContent() {
   const searchParams = useSearchParams();
@@ -60,10 +61,17 @@ function LoginContent() {
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8 relative z-10">
         {/* Header Branding */}
         <div className="flex flex-col items-center text-center mb-8">
-          <div className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-500 mb-3 shadow-inner">
-            <ShieldCheck className="w-8 h-8" />
-          </div>
-          <h1 className="text-xl font-bold text-white tracking-wide">Enterprise Data Matcher</h1>
+<div className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-500 mb-3 shadow-inner flex items-center justify-center">
+  <Image 
+    src="/icon-bps.png" 
+    alt="Ikon BPS" 
+    width={32} 
+    height={32} 
+    className="w-8 h-8 object-contain"
+    priority
+  />
+</div>
+          <h1 className="text-xl font-bold text-white tracking-wide">MATCHING STATISTIK</h1>
           <p className="text-xs text-slate-400 mt-1">Masuk untuk mengakses sistem pengolahan & matching data</p>
         </div>
 
