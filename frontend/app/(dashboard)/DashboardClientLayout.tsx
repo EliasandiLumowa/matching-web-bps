@@ -13,27 +13,39 @@ import {
   Menu, 
   X,
   User,
-  Users, // <-- Tambahkan ikon Users
+  Users,
+  MonitorCheck,
   Loader2
 } from 'lucide-react';
 import Image from 'next/image';
 
 const navigation = [
-  { name: 'Beranda', href: '/', icon: LayoutDashboard },
-  { name: 'Matching Data', href: '/matching', icon: GitCompare },
-  { name: 'Review CSV', href: '/review', icon: FileCheck2 },
-  { name: 'Riwayat Matching', href: '/history', icon: History },
+  // Menu untuk SEMUA user
+  { name: 'Beranda', href: '/', icon: LayoutDashboard, requiresSuperadmin: false },
+  { name: 'Matching Data', href: '/matching', icon: GitCompare, requiresSuperadmin: false },
+  { name: 'Review CSV', href: '/review', icon: FileCheck2, requiresSuperadmin: false },
+  { name: 'Riwayat Matching', href: '/history', icon: History, requiresSuperadmin: false },
+  
+  // Menu KHUSUS Superadmin
   { 
     name: 'Akun Management', 
     href: process.env.NEXT_PUBLIC_STRAPI_ADMIN_URL || 'http://localhost:1337/admin', 
     icon: Users, 
-    external: true // <-- Penanda link eksternal
+    external: true,
+    requiresSuperadmin: true 
+  },
+  { 
+    name: 'History Akun Matched', 
+    href: '/superadmin/history', 
+    icon: MonitorCheck, 
+    requiresSuperadmin: true 
   },
 ];
 
 interface UserSession {
   username: string;
   email: string;
+  is_superadmin?: boolean;
 }
 
 export default function DashboardClientLayout({
@@ -69,6 +81,9 @@ export default function DashboardClientLayout({
     window.location.href = '/login';
   };
 
+  // Identifikasi apakah user adalah Superadmin
+  const isSuperadmin = userData?.is_superadmin === true;
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar Mobile Overlay */}
@@ -88,16 +103,16 @@ export default function DashboardClientLayout({
           {/* Logo & Brand */}
           <div className="h-16 flex items-center justify-between px-6 bg-slate-950 border-b border-slate-800">
             <div className="flex items-center gap-3">
-<div className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-500 mb-3 shadow-inner flex items-center justify-center">
-  <Image 
-    src="/icon-bps.png" 
-    alt="Ikon BPS" 
-    width={32} 
-    height={32} 
-    className="w-8 h-8 object-contain"
-    priority
-  />
-</div>
+              <div className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-500 mb-3 shadow-inner flex items-center justify-center">
+                <Image 
+                  src="/icon-bps.png" 
+                  alt="Ikon BPS" 
+                  width={32} 
+                  height={32} 
+                  className="w-8 h-8 object-contain"
+                  priority
+                />
+              </div>
               <div>
                 <span className="font-bold text-sm tracking-wide text-white">MATCHSTAT</span>
                 <span className="block text-[10px] text-slate-400">Enterprise Security</span>
@@ -111,6 +126,9 @@ export default function DashboardClientLayout({
           {/* Navigation Links */}
           <nav className="p-4 space-y-1.5">
             {navigation.map((item) => {
+              // FILTER MENU: Sembunyikan jika menu butuh superadmin tapi user BUKAN superadmin
+              if (item.requiresSuperadmin && !isSuperadmin) return null;
+
               const isActive = pathname === item.href;
               const Icon = item.icon;
 
@@ -120,7 +138,7 @@ export default function DashboardClientLayout({
                   <a
                     key={item.name}
                     href={item.href}
-                    target="_blank" // Membuka di tab baru
+                    target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setSidebarOpen(false)}
                     className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
@@ -161,7 +179,9 @@ export default function DashboardClientLayout({
               {userData ? (
                 <>
                   <p className="text-xs font-semibold text-white truncate capitalize">{userData.username}</p>
-                  <p className="text-[11px] text-slate-400 truncate">{userData.email}</p>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {isSuperadmin ? 'Superadmin' : userData.email}
+                  </p>
                 </>
               ) : (
                 <>
@@ -178,6 +198,9 @@ export default function DashboardClientLayout({
             <LogOut className="w-3.5 h-3.5" />
             Keluar Sistem
           </button>
+          <div className="mt-2 text-center text-[10px] text-slate-500 font-mono">
+            Matchstat Version {process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'}
+          </div>
         </div>
       </aside>
 
@@ -196,12 +219,6 @@ export default function DashboardClientLayout({
               {navigation.find(n => n.href === pathname)?.name || 'Dashboard'}
             </h2>
           </div>
-          {/* <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Database Protected
-            </span>
-          </div> */}
         </header>
 
         {/* Page View Body */}

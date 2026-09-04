@@ -71,6 +71,13 @@
       "relation": "oneToMany",
       "target": "api::history-matching.history-matching",
       "mappedBy": "users_permissions_user"
+    },
+    "no_wa": {
+      "type": "string"
+    },
+    "is_superadmin": {
+      "type": "boolean",
+      "default": false
     }
   }
 }

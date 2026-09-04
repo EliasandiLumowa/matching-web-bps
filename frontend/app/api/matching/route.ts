@@ -106,21 +106,14 @@ export async function POST(request: Request) {
   // ----------------------------------------------------------------------
   // UPDATE: Setup Deteksi Kolom File Master Sesuai Format Baru Anda
   // ----------------------------------------------------------------------
-  const colMasterCodeIdentity = findColumnName(masterHeaders, ["code_identity", "code identity"]);
-  const colMasterId = findColumnName(masterHeaders, ["ID", "id"]);
-  const colMasterKbli = findColumnName(masterHeaders, ["Kode_KBLI", "kode_kbli", "kbli"]);
-  const colMasterNama = findColumnName(masterHeaders, ["Nama_Usaha", "nama_usaha"]);
-  const colMasterPengusaha = findColumnName(masterHeaders, ["Nama_Pengusaha", "pengusaha", "pemilik"]);
-  
-  const colMasterStatus = findColumnName(masterHeaders, ["Status_Pendataan", "status_pendataan", "status"]);
-  const colMasterStatusKeluarga = findColumnName(masterHeaders, ["Status_Keberadaan_Keluarga", "status_keberadaan_keluarga"]);
-  
+  const colMasterCodeIdentity = findColumnName(masterHeaders, ["code_identity", "code identity", "code"]);
   const colMasterKec = findColumnName(masterHeaders, ["Nama_Kecamatan", "nama_kecamatan", "kecamatan", "kec"]);
   const colMasterKel = findColumnName(masterHeaders, ["Nama_Kelurahan", "nama_kelurahan", "kelurahan", "desa", "kel"]);
-  const colMasterStatusBangunan = findColumnName(masterHeaders, ["Status_Bangunan", "status_bangunan"]);
-  
-  const colMasterCatatan = findColumnName(masterHeaders, ["Catatan", "catatan", "keterangan"]);
-  const colMasterLink = findColumnName(masterHeaders, ["Link_Fasih", "link_fasih", "link"]);
+  const colMasterKbli = findColumnName(masterHeaders, ["Kode_KBLI", "kode_kbli", "kbli", "kode kbli"]);
+  const colMasterNama = findColumnName(masterHeaders, ["Nama_Usaha", "nama_usaha", "nama usaha"]);
+  const colMasterPengusaha = findColumnName(masterHeaders, ["Nama_Pengusaha", "nama_pengusaha", "nama pengusaha", "pengusaha", "pemilik"]);
+  const colMasterStatus = findColumnName(masterHeaders, ["Status_Pendataan", "status_pendataan", "status pendataan", "status"]);
+  const colMasterStatusKeberadaan = findColumnName(masterHeaders, ["Status Keberadaan", "status_keberadaan", "status keberadaan", "keberadaan"]);
 
   if (!colMasterNama) {
     return NextResponse.json({ detail: "Kolom 'Nama_Usaha' tidak ditemukan di File Master." }, { status: 400 });
@@ -246,19 +239,13 @@ export async function POST(request: Request) {
             
             // Kolom dari data Master Format Terbaru
             master_code_identity: getRowValue(rowMaster, colMasterCodeIdentity),
-            master_id: getRowValue(rowMaster, colMasterId), 
+            master_nama_kecamatan: getRowValue(rowMaster, colMasterKec),
+            master_nama_kelurahan: getRowValue(rowMaster, colMasterKel),
             master_kode_kbli: getRowValue(rowMaster, colMasterKbli),
             master_nama_usaha: getRowValue(rowMaster, colMasterNama), 
             master_nama_pengusaha: getRowValue(rowMaster, colMasterPengusaha),
-            
             master_status_pendataan: getRowValue(rowMaster, colMasterStatus),
-            master_status_keberadaan_keluarga: getRowValue(rowMaster, colMasterStatusKeluarga),
-            master_nama_kecamatan: getRowValue(rowMaster, colMasterKec),
-            master_nama_kelurahan: getRowValue(rowMaster, colMasterKel),
-            master_status_bangunan: getRowValue(rowMaster, colMasterStatusBangunan),
-            
-            master_catatan: getRowValue(rowMaster, colMasterCatatan),
-            master_link_fasih: extractCleanUrl(getRowValue(rowMaster, colMasterLink))
+            master_status_keberadaan: getRowValue(rowMaster, colMasterStatusKeberadaan),
           });
         }
 
@@ -310,46 +297,3 @@ export async function POST(request: Request) {
   });
 }
 
-
-// CODE PYTHON
-// import { NextResponse } from 'next/server';
-
-// export const maxDuration = 300;
-
-// export async function POST(request: Request) {
-//   try {
-//     // Terima file dari frontend
-//     const formData = await request.formData();
-    
-//     // Oper/lempar langsung file tersebut ke mesin Python FastAPI
-//     const pythonResponse = await fetch('http://localhost:8000/match', {
-//       method: 'POST',
-//       body: formData,
-//       // Hilangkan headers Content-Type agar browser mengatur mode multipart/form-data otomatis
-//     });
-
-//     if (!pythonResponse.ok) {
-//       throw new Error(`Python Error: ${pythonResponse.statusText}`);
-//     }
-
-//     const result = await pythonResponse.json();
-    
-//     // Agar Frontend Anda tetap merasa seperti sedang menerima stream,
-//     // kita akan kembalikan format JSON persis seperti event terakhir di stream sebelumnya
-//     const encoder = new TextEncoder();
-//     const stream = new ReadableStream({
-//       start(controller) {
-//         controller.enqueue(encoder.encode(JSON.stringify(result) + "\n"));
-//         controller.close();
-//       }
-//     });
-
-//     return new Response(stream, {
-//       headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-cache" },
-//     });
-
-//   } catch (error: any) {
-//     console.error("Proxy Error:", error);
-//     return NextResponse.json({ detail: error.message }, { status: 500 });
-//   }
-// }
