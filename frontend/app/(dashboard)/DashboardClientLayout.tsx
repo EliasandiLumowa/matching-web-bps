@@ -36,7 +36,7 @@ const navigation = [
   },
   { 
     name: 'History Akun Matched', 
-    href: '/superadmin/history', 
+    href: '/history/user_matched', 
     icon: MonitorCheck, 
     requiresSuperadmin: true 
   },

@@ -23,11 +23,12 @@ export async function GET() {
 
     const userData = await userRes.json();
 
-    // Kembalikan nama (username) dan email user tersebut
+    // Kembalikan nama (username), email, beserta status superadmin
     return NextResponse.json({
       user: {
         username: userData.username,
-        email: userData.email
+        email: userData.email,
+        is_superadmin: userData.is_superadmin // <-- BARIS INI WAJIB ADA
       }
     });
 
