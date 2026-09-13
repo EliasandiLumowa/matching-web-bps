@@ -8,11 +8,11 @@ import {
   CheckCircle2, 
   XCircle, 
   Save, 
-  ExternalLink,
   Loader2,
   Download
 } from 'lucide-react';
 import { useMatchingStore } from '../../store/useMatchingStore';
+import * as XLSX from 'xlsx';
 
 export default function MatchingPage() {
   const { 
@@ -29,7 +29,6 @@ export default function MatchingPage() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched');
   
-  // Threshold di-set default 85 untuk exact match
   const [threshold, setThreshold] = useState<number>(85);
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [progressPhase, setProgressPhase] = useState<string>('');
@@ -130,13 +129,42 @@ export default function MatchingPage() {
       return;
     }
 
-    const headers = Object.keys(dataToDownload[0]);
+    const formattedData = dataToDownload.map((row: any) => {
+      // Pastikan URL terekstrak bersih
+      const rawUrl = row.scraping_titik_lokasi ? String(row.scraping_titik_lokasi).trim() : "-";
+
+      if (activeTab === 'matched') {
+        return {
+          "Skor": `${row.similarity_score}%`,
+          "Nama Usaha (Master)": row.master_nama_usaha || "-",
+          "Nama Usaha (Scraping)": row.scraping_nama_usaha || "-",
+          "Titik Lokasi": rawUrl, 
+          "Kab/Kota": row.scraping_kab_kota || "-",
+          "Kecamatan": row.master_nama_kecamatan || "-",
+          "Desa/Kelurahan": row.master_nama_desa || "-",
+          "Code Identity": row.master_code_identity || "-",
+          "Alamat Master": row.master_alamat || "-",
+          "Klasifikasi Usaha": row.master_klasifikasi_usaha || "-",
+          "Label Keberadaan": row.master_keberadaan_usaha_label || "-"
+        };
+      } else {
+        return {
+          "Skor Tertinggi": `${row.similarity_score}%`,
+          "Nama Usaha (Scraping)": row.scraping_nama_usaha || "-",
+          "Titik Lokasi": rawUrl, 
+          "Kab/Kota": row.scraping_kab_kota || "-",
+          "Kandidat Master Terdekat": row.closest_candidate || "-"
+        };
+      }
+    });
+
+    const headers = Object.keys(formattedData[0]);
     const csvRows = [];
     csvRows.push(headers.join(',')); 
     
-    for (const row of dataToDownload) {
+    for (const row of formattedData) {
       const values = headers.map(header => {
-        const val = row[header] === null || row[header] === undefined ? '' : String(row[header]);
+        const val = (row as any)[header] === null || (row as any)[header] === undefined ? '' : String((row as any)[header]);
         const escaped = val.replace(/"/g, '""');
         return `"${escaped}"`;
       });
@@ -153,6 +181,91 @@ export default function MatchingPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleDownloadExcel = () => {
+    if (!matchingResult) return;
+
+    const dataToDownload = activeTab === 'matched' 
+      ? matchingResult.matched_data 
+      : matchingResult.unmatched_data;
+
+    if (dataToDownload.length === 0) {
+      alert('Tidak ada data untuk didownload.');
+      return;
+    }
+
+    const formattedData = dataToDownload.map((row: any) => {
+      // Bersihkan URL dan siapkan penampung
+      const rawUrl = row.scraping_titik_lokasi ? String(row.scraping_titik_lokasi).trim() : "";
+      const isUrlValid = rawUrl.includes('http');
+
+      if (activeTab === 'matched') {
+        return {
+          "Skor": `${row.similarity_score}%`,
+          "Nama Usaha (Master)": row.master_nama_usaha || "-",
+          "Nama Usaha (Scraping)": row.scraping_nama_usaha || "-",
+          "Titik Lokasi": isUrlValid ? rawUrl : "-", 
+          "Kab/Kota": row.scraping_kab_kota || "-",
+          "Kecamatan": row.master_nama_kecamatan || "-",
+          "Desa/Kelurahan": row.master_nama_desa || "-",
+          "Code Identity": row.master_code_identity || "-",
+          "Alamat Master": row.master_alamat || "-",
+          "Klasifikasi Usaha": row.master_klasifikasi_usaha || "-",
+          "Label Keberadaan": row.master_keberadaan_usaha_label || "-"
+        };
+      } else {
+        return {
+          "Skor Tertinggi": `${row.similarity_score}%`,
+          "Nama Usaha (Scraping)": row.scraping_nama_usaha || "-",
+          "Titik Lokasi": isUrlValid ? rawUrl : "-",
+          "Kab/Kota": row.scraping_kab_kota || "-",
+          "Kandidat Master Terdekat": row.closest_candidate || "-"
+        };
+      }
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(formattedData);
+    
+    // Perhatikan index kolom Titik Lokasi: (matched = D = 3), (unmatched = C = 2)
+    const urlColIndex = activeTab === 'matched' ? 3 : 2;
+
+    dataToDownload.forEach((originalRow: any, index: number) => {
+      const rawUrl = originalRow.scraping_titik_lokasi;
+      const url = rawUrl ? String(rawUrl).trim() : '';
+
+      if (url && url.includes('http')) {
+        const cellRef = XLSX.utils.encode_cell({ r: index + 1, c: urlColIndex }); 
+        
+        if (worksheet[cellRef]) {
+          if (url.length < 255) {
+            // Jika link pendek, amankan dengan rumus HYPERLINK
+            worksheet[cellRef] = {
+              t: 's',
+              v: '🔗 Lihat di Maps',
+              f: `HYPERLINK("${url}", "🔗 Lihat di Maps")`
+            };
+          } else {
+            // Jika melebihi batas 255 karakter, munculkan full URL di sel. 
+            // Kita tetap injeksi properti link (.l) sebagai tambahan keamanan.
+            worksheet[cellRef].t = 's';
+            worksheet[cellRef].v = url;
+            worksheet[cellRef].l = { Target: url };
+          }
+        }
+      }
+    });
+
+    // Lebar kolom diatur agar kolom Titik Lokasi cukup lebar membaca full URL
+    const colWidths = activeTab === 'matched' 
+      ? [ { wch: 8 }, { wch: 35 }, { wch: 35 }, { wch: 45 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 25 }, { wch: 45 }, { wch: 20 }, { wch: 20 } ] 
+      : [ { wch: 15 }, { wch: 35 }, { wch: 45 }, { wch: 20 }, { wch: 35 } ];
+    
+    worksheet['!cols'] = colWidths;
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Hasil Matching');
+    XLSX.writeFile(workbook, `Hasil_Matching_${activeTab}_${new Date().getTime()}.xlsx`);
   };
 
   const handleSaveHistory = async () => {
@@ -190,7 +303,6 @@ export default function MatchingPage() {
   
   return (
     <div className="space-y-6">
-      {/* Upload Zone */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-base font-bold text-slate-800 mb-1">Unggah Dataset untuk Matching</h3>
         <p className="text-xs text-slate-400 mb-6">Pilih File Utama (Master) dan File Target Scraping (Format .CSV)</p>
@@ -239,7 +351,6 @@ export default function MatchingPage() {
           </div>
         </div>
 
-        {/* Slider Threshold */}
         <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <div>
@@ -278,7 +389,6 @@ export default function MatchingPage() {
         </div>
       </div>
 
-      {/* Live Progress Bar */}
       {loading && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <div className="flex items-center justify-between mb-2">
@@ -297,10 +407,8 @@ export default function MatchingPage() {
         </div>
       )}
 
-      {/* Results View */}
       {matchingResult && (
         <div className="space-y-6">
-          {/* Summary Metric Header */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
               <span className="text-xs font-medium text-slate-500">Total Data Scraping</span>
@@ -325,7 +433,6 @@ export default function MatchingPage() {
             </div>
           </div>
 
-          {/* Tab & Action Bar */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
               <div className="flex bg-slate-100 p-1 rounded-lg">
@@ -347,13 +454,21 @@ export default function MatchingPage() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button 
                   onClick={handleDownloadCSV}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold shadow-sm border border-slate-200 hover:bg-slate-200 transition"
                 >
-                  <Download className="w-3.5 h-3.5" /> Download CSV
+                  <Download className="w-3.5 h-3.5" /> Unduh CSV
                 </button>
+
+                <button 
+                  onClick={handleDownloadExcel}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold shadow-sm border border-emerald-200 hover:bg-emerald-100 transition"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Unduh Excel
+                </button>
+
                 <button 
                   onClick={handleSaveHistory}
                   disabled={saving}
@@ -364,7 +479,6 @@ export default function MatchingPage() {
               </div>
             </div>
 
-            {/* Table Content */}
             <div className="overflow-x-auto">
               {activeTab === 'matched' ? (
                 <table className="w-max min-w-full text-left text-xs text-slate-600">
