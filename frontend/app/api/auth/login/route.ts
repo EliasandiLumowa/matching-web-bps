@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       secure: false, 
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 8, // 8 Jam
+maxAge: 60 * 60 * 24 * 365, // <-- PASTIKAN UBAH KE 1 TAHUN JUGA DI SINI
     });
 
     return NextResponse.json({ message: 'Login berhasil', user: userData }, { status: 200 });
