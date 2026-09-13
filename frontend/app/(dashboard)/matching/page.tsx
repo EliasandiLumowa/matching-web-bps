@@ -12,10 +12,9 @@ import {
   Loader2,
   Download
 } from 'lucide-react';
-import { useMatchingStore } from '../../store/useMatchingStore'; // Pastikan path ini sudah benar sesuai struktur folder Anda
+import { useMatchingStore } from '../../store/useMatchingStore';
 
 export default function MatchingPage() {
-  // 1. Panggil state dan aksi dari global store
   const { 
     matchingResult, 
     fileNameMaster, 
@@ -24,14 +23,14 @@ export default function MatchingPage() {
     clearResult 
   } = useMatchingStore();
 
-  // State lokal (hanya untuk kontrol UI halaman ini)
   const [fileMaster, setFileMaster] = useState<File | null>(null);
   const [fileScraping, setFileScraping] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'matched' | 'unmatched'>('matched');
   
-  const [threshold, setThreshold] = useState<number>(80);
+  // Threshold di-set default 85 untuk exact match
+  const [threshold, setThreshold] = useState<number>(85);
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [progressPhase, setProgressPhase] = useState<string>('');
   const [progressDetail, setProgressDetail] = useState<string>('');
@@ -39,19 +38,14 @@ export default function MatchingPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Efek untuk mencegah user tidak sengaja me-refresh atau menutup tab
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Munculkan peringatan jika sedang loading ATAU ada hasil matching yang belum disimpan
       if (loading || matchingResult) {
         e.preventDefault();
-        e.returnValue = ''; // Wajib diisi string kosong agar Chrome memunculkan dialog
+        e.returnValue = '';
       }
     };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    // Bersihkan event listener saat komponen dilepas
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [loading, matchingResult]);
 
@@ -62,7 +56,6 @@ export default function MatchingPage() {
     }
 
     setLoading(true);
-    // 2. Gunakan clearResult dari store global
     clearResult(); 
     setProgressPercent(0);
     setProgressPhase('Mengunggah file...');
@@ -107,7 +100,6 @@ export default function MatchingPage() {
               setProgressPhase(event.phase);
               setProgressDetail(`${event.current.toLocaleString('id-ID')} / ${event.total.toLocaleString('id-ID')} baris`);
             } else if (event.type === 'result') {
-              // 3. Simpan data dan nama file ke store global
               setMatchingResult(event.data, fileMaster.name, fileScraping.name);
               setProgressPercent(100);
               setProgressPhase('Selesai!');
@@ -168,8 +160,6 @@ export default function MatchingPage() {
 
     setSaving(true);
     try {
-      // 4. Gunakan fileNameMaster dan fileNameScraping dari global store 
-      //    (karena variabel lokal fileMaster bisa null jika user pindah halaman lalu kembali)
       const payload = {
         nama_file_master: fileNameMaster,
         nama_file_scraping: fileNameScraping,
@@ -211,7 +201,7 @@ export default function MatchingPage() {
           }`}>
             <FileSpreadsheet className={`w-10 h-10 mb-2 ${fileMaster ? 'text-blue-600' : 'text-slate-400'}`} />
             <p className="text-xs font-semibold text-slate-700">1. File Master (Data Utama)</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 mb-3 text-center">PERHATIKAN!! kolom yang dibutuhkan : Code_Identity, Nama_Kecamatan, Nama_Kelurahan, Kode_KBLI, Nama_Usaha, Nama_Pengusaha, Status_Pendataan, Status_Keberadaan.</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 mb-3 text-center">Kolom: code_identity, nama_usaha, alamat, dll.</p>
             <input 
               type="file" 
               accept=".csv" 
@@ -232,7 +222,7 @@ export default function MatchingPage() {
           }`}>
             <Upload className={`w-10 h-10 mb-2 ${fileScraping ? 'text-indigo-600' : 'text-slate-400'}`} />
             <p className="text-xs font-semibold text-slate-700">2. File Target (Data Scraping)</p>
-            <p className="text-[11px] text-slate-400 mt-0.5 mb-3 text-center">Kolom: Nama Usaha, Alamat, Jenis Usaha</p>
+            <p className="text-[11px] text-slate-400 mt-0.5 mb-3 text-center">Kolom: No, Nama_Usaha, Kab_Kota, Titik_Lokasi</p>
             <input 
               type="file" 
               accept=".csv" 
@@ -253,8 +243,8 @@ export default function MatchingPage() {
         <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <span className="text-xs font-semibold text-slate-700">Tingkat Toleransi Matching</span>
-              <p className="text-[11px] text-slate-400">Semakin tinggi nilai %, semakin ketat/akurat hasil pencocokan karakter.</p>
+              <span className="text-xs font-semibold text-slate-700">Tingkat Kemiripan Nama Usaha</span>
+              <p className="text-[11px] text-slate-400">Gunakan nilai 85-100% untuk mencari nama yang Sangat Persis.</p>
             </div>
             <span className="text-sm font-bold px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg">
               {threshold}%
@@ -269,11 +259,6 @@ export default function MatchingPage() {
             onChange={(e) => setThreshold(Number(e.target.value))}
             className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
           />
-          <div className="flex justify-between text-[10px] text-slate-400 mt-1.5 px-0.5">
-            <span>50% (Sangat Longgar)</span>
-            <span>80% (Rekomendasi)</span>
-            <span>100% (Sama Persis)</span>
-          </div>
         </div>
 
         <div className="mt-6 flex justify-end">
@@ -285,9 +270,9 @@ export default function MatchingPage() {
             className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold shadow-md shadow-blue-600/20 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Sedang Memproses Matching...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Sedang Memproses...</>
             ) : (
-              <><ArrowRightLeft className="w-4 h-4" /> Mulai Proses Matching (Toleransi {threshold}%)</>
+              <><ArrowRightLeft className="w-4 h-4" /> Mulai Pencocokan</>
             )}
           </button>
         </div>
@@ -318,12 +303,12 @@ export default function MatchingPage() {
           {/* Summary Metric Header */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-medium text-slate-500">Total Baris Scraping</span>
+              <span className="text-xs font-medium text-slate-500">Total Data Scraping</span>
               <p className="text-2xl font-bold text-slate-900 mt-1">{matchingResult.summary.total_scraping_rows}</p>
             </div>
             <div className="p-5 bg-white rounded-xl border border-emerald-200 bg-emerald-50/20 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-800 border-b border-dashed border-emerald-300">Berhasil Matching (≥ {threshold}%)</span>
+                <span className="text-xs font-semibold text-emerald-800">Sangat Persis (≥ {threshold}%)</span>
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
               <p className="text-2xl font-bold text-emerald-700 mt-1">
@@ -333,7 +318,7 @@ export default function MatchingPage() {
             </div>
             <div className="p-5 bg-white rounded-xl border border-rose-200 bg-rose-50/20 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-rose-800 border-b border-dashed border-rose-300">Belum Matching (&lt; {threshold}%)</span>
+                <span className="text-xs font-semibold text-rose-800">Tidak Ditemukan</span>
                 <XCircle className="w-4 h-4 text-rose-600" />
               </div>
               <p className="text-2xl font-bold text-rose-700 mt-1">{matchingResult.summary.unmatched_count}</p>
@@ -350,7 +335,7 @@ export default function MatchingPage() {
                     activeTab === 'matched' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Data Sudah Matching ({matchingResult.matched_data.length})
+                  Data Cocok ({matchingResult.matched_data.length})
                 </button>
                 <button
                   onClick={() => setActiveTab('unmatched')}
@@ -358,7 +343,7 @@ export default function MatchingPage() {
                     activeTab === 'unmatched' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  Data Belum Matching ({matchingResult.unmatched_data.length})
+                  Tidak Ditemukan ({matchingResult.unmatched_data.length})
                 </button>
               </div>
 
@@ -385,17 +370,17 @@ export default function MatchingPage() {
                 <table className="w-max min-w-full text-left text-xs text-slate-600">
                   <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 whitespace-nowrap">
                     <tr>
-                      <th className="p-3.5 sticky left-0 bg-slate-50 z-10 shadow-[1px_0_0_0_#e2e8f0]">Kemiripan</th>
-                      <th className="p-3.5">Cocok Via</th>
-                      <th className="p-3.5 text-indigo-700 bg-indigo-50/50">Nama Usaha (Scraping)</th>
+                      <th className="p-3.5 sticky left-0 bg-slate-50 z-10 shadow-[1px_0_0_0_#e2e8f0]">Skor</th>
                       <th className="p-3.5">Nama Usaha (Master)</th>
-                      <th className="p-3.5">Code Identity</th>
+                      <th className="p-3.5 text-indigo-700 bg-indigo-50/50">Nama Usaha (Scraping)</th>
+                      <th className="p-3.5">Titik Lokasi</th>
+                      <th className="p-3.5">Kab/Kota</th>
                       <th className="p-3.5">Kecamatan</th>
-                      <th className="p-3.5">Kelurahan</th>
-                      <th className="p-3.5">Kode KBLI</th>
-                      <th className="p-3.5">Nama Pengusaha</th>
-                      <th className="p-3.5">Status Pendataan</th>
-                      <th className="p-3.5">Status Keberadaan</th>
+                      <th className="p-3.5">Desa/Kelurahan</th>
+                      <th className="p-3.5">Code Identity</th>
+                      <th className="p-3.5">Alamat Master</th>
+                      <th className="p-3.5">Klasifikasi Usaha</th>
+                      <th className="p-3.5">Label Keberadaan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -406,20 +391,20 @@ export default function MatchingPage() {
                             {row.similarity_score}%
                           </span>
                         </td>
-                        <td className="p-3.5">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">
-                            {row.matched_by_field}
-                          </span>
-                        </td>
-                        <td className="p-3.5 font-medium text-slate-900 bg-indigo-50/10">{row.scraping_nama_usaha}</td>
                         <td className="p-3.5 font-medium text-slate-800">{row.master_nama_usaha}</td>
-                        <td className="p-3.5 font-mono text-slate-500">{row.master_code_identity || '-'}</td>
+                        <td className="p-3.5 font-medium text-slate-900 bg-indigo-50/10">{row.scraping_nama_usaha}</td>
+                        <td className="p-3.5 text-blue-600 underline">
+                          <a href={row.scraping_titik_lokasi} target="_blank" rel="noreferrer">
+                            {row.scraping_titik_lokasi ? "Lihat Map" : "-"}
+                          </a>
+                        </td>
+                        <td className="p-3.5">{row.scraping_kab_kota || '-'}</td>
                         <td className="p-3.5">{row.master_nama_kecamatan || '-'}</td>
-                        <td className="p-3.5">{row.master_nama_kelurahan || '-'}</td>
-                        <td className="p-3.5 font-mono text-slate-700">{row.master_kode_kbli || '-'}</td>
-                        <td className="p-3.5 text-slate-600">{row.master_nama_pengusaha || '-'}</td>
-                        <td className="p-3.5">{row.master_status_pendataan || '-'}</td>
-                        <td className="p-3.5">{row.master_status_keberadaan || '-'}</td>
+                        <td className="p-3.5">{row.master_nama_desa || '-'}</td>
+                        <td className="p-3.5 font-mono text-slate-500">{row.master_code_identity || '-'}</td>
+                        <td className="p-3.5 truncate max-w-[200px]" title={row.master_alamat}>{row.master_alamat || '-'}</td>
+                        <td className="p-3.5">{row.master_klasifikasi_usaha || '-'}</td>
+                        <td className="p-3.5">{row.master_keberadaan_usaha_label || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -430,8 +415,8 @@ export default function MatchingPage() {
                     <tr>
                       <th className="p-3.5">Skor Tertinggi</th>
                       <th className="p-3.5">Nama Usaha (Scraping)</th>
-                      <th className="p-3.5">Alamat (Scraping)</th>
-                      <th className="p-3.5">Jenis Usaha</th>
+                      <th className="p-3.5">Titik Lokasi</th>
+                      <th className="p-3.5">Kab/Kota</th>
                       <th className="p-3.5">Kandidat Master Terdekat</th>
                     </tr>
                   </thead>
@@ -444,8 +429,12 @@ export default function MatchingPage() {
                           </span>
                         </td>
                         <td className="p-3.5 font-medium text-slate-900">{row.scraping_nama_usaha}</td>
-                        <td className="p-3.5">{row.scraping_alamat || '-'}</td>
-                        <td className="p-3.5">{row.scraping_jenis_usaha || '-'}</td>
+                        <td className="p-3.5 text-blue-600 underline">
+                          <a href={row.scraping_titik_lokasi} target="_blank" rel="noreferrer">
+                            {row.scraping_titik_lokasi ? "Lihat Map" : "-"}
+                          </a>
+                        </td>
+                        <td className="p-3.5">{row.scraping_kab_kota || '-'}</td>
                         <td className="p-3.5 italic text-slate-400">{row.closest_candidate}</td>
                       </tr>
                     ))}

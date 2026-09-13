@@ -7,7 +7,7 @@ const BUSINESS_STOPWORDS = new Set([
   "official", "store", "shop", "toko", "collection", "collections", 
   "mart", "indomaret", "alfamart", "grosir", "olshop", "mall", 
   "resmi", "authorized", "indonesia", "manado", "sulawesi", "utara",
-  "cv", "pt", "ud", "tbk", "id", "co", "cell", "cellular"
+  "cv", "pt", "ud", "tbk", "id", "co", "cell", "cellular", "warung", "kios", "rumah makan"
 ]);
 
 // Fungsi membersihkan teks untuk matching
@@ -20,24 +20,6 @@ function cleanTextWords(text: any): string {
     words = t.split(/\s+/).filter(w => w.length > 1);
   }
   return words.join(" ").trim();
-}
-
-// Ekstraksi url bersih
-function extractCleanUrl(rawVal: any): string {
-  if (rawVal === null || rawVal === undefined) return "";
-  let valStr = String(rawVal).trim();
-  if (!valStr) return "";
-  valStr = valStr
-    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
-    .replace(/&amp;/gi, '&').replace(/&#39;/gi, "'");
-  const hrefMatch = valStr.match(/href=['"]?([^'" >]+)/i);
-  let url = hrefMatch ? hrefMatch[1].trim() : valStr;
-  url = url.replace(/<[^>]*>/g, '').replace(/^['"]|['"]$/g, '').trim();
-  if (url.startsWith('file:///') || url.startsWith('file://')) return "";
-  if (url.startsWith('//')) { url = 'https:' + url; }
-  else if (!url.startsWith('http://') && !url.startsWith('https://') && url.includes('.') && !url.startsWith('<')) { url = 'https://' + url; }
-  if (url.includes('<') || url.includes('>')) return "";
-  return url;
 }
 
 // Deteksi nama kolom secara fleksibel
@@ -59,7 +41,6 @@ function getRowValue(row: any, colName: string | undefined): string {
 }
 
 export async function POST(request: Request) {
-  // Parse form data & validasi sebelum streaming
   let formData: FormData;
   try { formData = await request.formData(); }
   catch { return NextResponse.json({ detail: "Gagal membaca form data." }, { status: 400 }); }
@@ -76,7 +57,6 @@ export async function POST(request: Request) {
   const textMaster = await fileMaster.text();
   const textScraping = await fileScraping.text();
   
-  // Update skipEmptyLines ke greedy untuk mencegah error data berantakan
   const parsedMaster = Papa.parse(textMaster, { header: true, skipEmptyLines: "greedy" });
   const parsedScraping = Papa.parse(textScraping, { header: true, skipEmptyLines: "greedy" });
   
@@ -90,33 +70,33 @@ export async function POST(request: Request) {
   const masterHeaders = parsedMaster.meta.fields || Object.keys(masterRows[0]);
   const scrapingHeaders = parsedScraping.meta.fields || Object.keys(scrapingRows[0]);
 
-  // Kolom File Scraping (Tetap sama)
-  const colScrapNama = findColumnName(scrapingHeaders, ["Nama_Usaha", "Nama Usaha", "nama_usaha", "nama"]);
-  const colScrapAlamat = findColumnName(scrapingHeaders, ["alamat", "Alamat", "alamat_usaha"]);
-  const colScrapKec = findColumnName(scrapingHeaders, ["kecamatan", "kec"]);
-  const colScrapKel = findColumnName(scrapingHeaders, ["kelurahan", "desa", "kel"]);
-  const colScrapJenis = findColumnName(scrapingHeaders, ["jenis usaha", "jenis_usaha", "kategori"]);
-  const colScrapSumber = findColumnName(scrapingHeaders, ["sumber", "Sumber"]);
-  const colScrapKet = findColumnName(scrapingHeaders, ["keterangan", "ket"]);
+  // ----------------------------------------------------------------------
+  // KOLOM FILE SCRAPING (Terbaru)
+  // Kolom: No | Nama_Usaha | Kab_Kota | Titik_Lokasi
+  // ----------------------------------------------------------------------
+  const colScrapNama = findColumnName(scrapingHeaders, ["Nama_Usaha", "Nama Usaha", "nama"]);
+  const colScrapKabKota = findColumnName(scrapingHeaders, ["Kab_Kota", "Kab Kota", "kabupaten", "kota"]);
+  const colScrapTitikLokasi = findColumnName(scrapingHeaders, ["Titik_Lokasi", "Titik Lokasi", "lokasi", "koordinat"]);
 
   if (!colScrapNama) {
     return NextResponse.json({ detail: "Kolom 'Nama_Usaha' tidak ditemukan di File Scraping." }, { status: 400 });
   }
 
   // ----------------------------------------------------------------------
-  // UPDATE: Setup Deteksi Kolom File Master Sesuai Format Baru Anda
+  // KOLOM FILE MASTER (Terbaru)
+  // Kolom: code_identity | nama_kabupaten | nama_kecamatan | nama_desa | nama_usaha | alamat | klasifikasi_usaha | keberadaan_usaha_label
   // ----------------------------------------------------------------------
   const colMasterCodeIdentity = findColumnName(masterHeaders, ["code_identity", "code identity", "code"]);
-  const colMasterKec = findColumnName(masterHeaders, ["Nama_Kecamatan", "nama_kecamatan", "kecamatan", "kec"]);
-  const colMasterKel = findColumnName(masterHeaders, ["Nama_Kelurahan", "nama_kelurahan", "kelurahan", "desa", "kel"]);
-  const colMasterKbli = findColumnName(masterHeaders, ["Kode_KBLI", "kode_kbli", "kbli", "kode kbli"]);
-  const colMasterNama = findColumnName(masterHeaders, ["Nama_Usaha", "nama_usaha", "nama usaha"]);
-  const colMasterPengusaha = findColumnName(masterHeaders, ["Nama_Pengusaha", "nama_pengusaha", "nama pengusaha", "pengusaha", "pemilik"]);
-  const colMasterStatus = findColumnName(masterHeaders, ["Status_Pendataan", "status_pendataan", "status pendataan", "status"]);
-  const colMasterStatusKeberadaan = findColumnName(masterHeaders, ["Status Keberadaan", "status_keberadaan", "status keberadaan", "keberadaan"]);
+  const colMasterKab = findColumnName(masterHeaders, ["nama_kabupaten", "nama kabupaten", "kabupaten"]);
+  const colMasterKec = findColumnName(masterHeaders, ["nama_kecamatan", "nama kecamatan", "kecamatan"]);
+  const colMasterDesa = findColumnName(masterHeaders, ["nama_desa", "nama desa", "desa", "kelurahan"]);
+  const colMasterNama = findColumnName(masterHeaders, ["nama_usaha", "nama usaha"]);
+  const colMasterAlamat = findColumnName(masterHeaders, ["alamat"]);
+  const colMasterKlasifikasi = findColumnName(masterHeaders, ["klasifikasi_usaha", "klasifikasi usaha"]);
+  const colMasterKeberadaan = findColumnName(masterHeaders, ["keberadaan_usaha_label", "keberadaan usaha", "keberadaan"]);
 
   if (!colMasterNama) {
-    return NextResponse.json({ detail: "Kolom 'Nama_Usaha' tidak ditemukan di File Master." }, { status: 400 });
+    return NextResponse.json({ detail: "Kolom 'nama_usaha' tidak ditemukan di File Master." }, { status: 400 });
   }
 
   // ========== STREAMING RESPONSE ==========
@@ -128,42 +108,27 @@ export async function POST(request: Request) {
       }
 
       try {
-        // Fase 1: Membersihkan data
         sendEvent({ type: "progress", phase: "Membersihkan data Master & Scraping...", current: 0, total: scrapingRows.length, percent: 0 });
-        
-        // Jeda agar UI merender awal progress bar
         await new Promise(resolve => setTimeout(resolve, 10)); 
 
         const cleanMasterRecords = masterRows.map((row, idx) => {
           const uClean = cleanTextWords(row[colMasterNama!]);
-          const pClean = colMasterPengusaha ? cleanTextWords(row[colMasterPengusaha]) : "";
-          
-          // Menggunakan kolom Kecamatan dan Kelurahan sebagai pedoman pencocokan wilayah
-          const wilayahParts = [
-            colMasterKec ? String(row[colMasterKec] || "") : "",
-            colMasterKel ? String(row[colMasterKel] || "") : ""
-          ];
-          return { originalIndex: idx, originalRow: row, uClean, pClean, wClean: cleanTextWords(wilayahParts.join(" ")) };
+          return { originalIndex: idx, originalRow: row, uClean };
         });
 
         const cleanScrapingRecords = scrapingRows.map((row, idx) => {
           const scrapNama = getRowValue(row, colScrapNama);
           const uClean = cleanTextWords(scrapNama);
-          const wilayahParts = [
-            getRowValue(row, colScrapAlamat),
-            colScrapKec ? getRowValue(row, colScrapKec) : "",
-            colScrapKel ? getRowValue(row, colScrapKel) : ""
-          ];
-          return { originalIndex: idx, originalRow: row, scrapNama, uClean, wClean: cleanTextWords(wilayahParts.join(" ")) };
+          return { originalIndex: idx, originalRow: row, scrapNama, uClean };
         });
 
         const totalScraping = cleanScrapingRecords.length;
 
-        // Fase 2: Proses Matching
+        // Fase 2: Proses Matching (Fokus pada Nama_Usaha)
         sendEvent({ type: "progress", phase: "Mencocokkan data...", current: 0, total: totalScraping, percent: 0 });
         await new Promise(resolve => setTimeout(resolve, 10));
 
-        interface MatchPair { scrapIdx: number; masterIdx: number; score: number; matchedByField: string; }
+        interface MatchPair { scrapIdx: number; masterIdx: number; score: number; }
         const possibleMatches: MatchPair[] = [];
 
         for (let i = 0; i < cleanScrapingRecords.length; i++) {
@@ -171,35 +136,21 @@ export async function POST(request: Request) {
           if (!sRec.uClean || sRec.uClean.length <= 2) continue;
 
           for (const mRec of cleanMasterRecords) {
-            let bestFieldScore = 0;
-            let matchedByField = "Nama Usaha";
+            // FOKUS: Hanya mencocokkan Nama_Usaha vs nama_usaha menggunakan ratio string
+            const scoreUsaha = fuzzball.ratio(sRec.uClean, mRec.uClean);
 
-            const scoreUsaha = fuzzball.token_sort_ratio(sRec.uClean, mRec.uClean);
-            bestFieldScore = scoreUsaha;
-
-            if (mRec.pClean) {
-              const scorePengusaha = fuzzball.token_sort_ratio(sRec.uClean, mRec.pClean);
-              if (scorePengusaha > bestFieldScore) {
-                bestFieldScore = scorePengusaha;
-                matchedByField = "Nama Pengusaha";
-              }
-            }
-
-            const scoreWilayah = (sRec.wClean && mRec.wClean)
-              ? fuzzball.token_set_ratio(sRec.wClean, mRec.wClean) : 50.0;
-            const finalScore = (bestFieldScore * 0.75) + (scoreWilayah * 0.25);
-
-            if (finalScore >= threshold) {
-              possibleMatches.push({ scrapIdx: sRec.originalIndex, masterIdx: mRec.originalIndex, score: Math.round(finalScore * 100) / 100, matchedByField });
+            if (scoreUsaha >= threshold) {
+              possibleMatches.push({ 
+                scrapIdx: sRec.originalIndex, 
+                masterIdx: mRec.originalIndex, 
+                score: scoreUsaha 
+              });
             }
           }
 
-          // Kirim update progress setiap 10 baris 
           if ((i + 1) % 10 === 0 || i === cleanScrapingRecords.length - 1) {
             const percent = Math.round(((i + 1) / totalScraping) * 100);
             sendEvent({ type: "progress", phase: "Mencocokkan data...", current: i + 1, total: totalScraping, percent });
-            
-            // JEDA INI SANGAT PENTING AGAR UI TIDAK NGE-FREEZE
             await new Promise(resolve => setTimeout(resolve, 2)); 
           }
         }
@@ -207,6 +158,7 @@ export async function POST(request: Request) {
         // Fase 3: Menyusun hasil akhir
         sendEvent({ type: "progress", phase: "Menyusun hasil akhir...", current: totalScraping, total: totalScraping, percent: 99 });
 
+        // Sortir skor tertinggi lebih dulu
         possibleMatches.sort((a, b) => b.score - a.score);
 
         const matchedScrapingIndices = new Set<number>();
@@ -223,51 +175,49 @@ export async function POST(request: Request) {
           const rowMaster = mRec.originalRow;
           const rowScraping = sRec.originalRow;
 
-          // ----------------------------------------------------------------------
-          // UPDATE: Menyusun Variabel Kolom Sesuai dengan Format CSV Master Anda
-          // ----------------------------------------------------------------------
           matchedList.push({
             similarity_score: match.score, 
-            matched_by_field: match.matchedByField,
             
-            // Kolom dari data Scraping
+            // Kolom Scraping
             scraping_nama_usaha: sRec.scrapNama, 
-            scraping_alamat: getRowValue(rowScraping, colScrapAlamat),
-            scraping_jenis_usaha: getRowValue(rowScraping, colScrapJenis), 
-            scraping_sumber: getRowValue(rowScraping, colScrapSumber),
-            scraping_keterangan: getRowValue(rowScraping, colScrapKet),
+            scraping_kab_kota: getRowValue(rowScraping, colScrapKabKota),
+            scraping_titik_lokasi: getRowValue(rowScraping, colScrapTitikLokasi),
             
-            // Kolom dari data Master Format Terbaru
+            // Kolom Master
             master_code_identity: getRowValue(rowMaster, colMasterCodeIdentity),
+            master_nama_kabupaten: getRowValue(rowMaster, colMasterKab),
             master_nama_kecamatan: getRowValue(rowMaster, colMasterKec),
-            master_nama_kelurahan: getRowValue(rowMaster, colMasterKel),
-            master_kode_kbli: getRowValue(rowMaster, colMasterKbli),
+            master_nama_desa: getRowValue(rowMaster, colMasterDesa),
             master_nama_usaha: getRowValue(rowMaster, colMasterNama), 
-            master_nama_pengusaha: getRowValue(rowMaster, colMasterPengusaha),
-            master_status_pendataan: getRowValue(rowMaster, colMasterStatus),
-            master_status_keberadaan: getRowValue(rowMaster, colMasterStatusKeberadaan),
+            master_alamat: getRowValue(rowMaster, colMasterAlamat),
+            master_klasifikasi_usaha: getRowValue(rowMaster, colMasterKlasifikasi),
+            master_keberadaan_usaha_label: getRowValue(rowMaster, colMasterKeberadaan),
           });
         }
 
         const unmatchedList: any[] = [];
         for (const sRec of cleanScrapingRecords) {
           if (matchedScrapingIndices.has(sRec.originalIndex)) continue;
-          const rowScraping = sRec.originalRow;
+          
           let closestCandidateName = "-";
           let maxScore = 0;
+          
           if (sRec.uClean && sRec.uClean.length > 2) {
             for (const mRec of cleanMasterRecords) {
-              const scoreUsaha = fuzzball.token_sort_ratio(sRec.uClean, mRec.uClean);
-              const scoreWilayah = (sRec.wClean && mRec.wClean) ? fuzzball.token_set_ratio(sRec.wClean, mRec.wClean) : 50.0;
-              const finalScore = (scoreUsaha * 0.75) + (scoreWilayah * 0.25);
-              if (finalScore > maxScore) { maxScore = finalScore; closestCandidateName = getRowValue(mRec.originalRow, colMasterNama); }
+              const scoreUsaha = fuzzball.ratio(sRec.uClean, mRec.uClean);
+              if (scoreUsaha > maxScore) { 
+                maxScore = scoreUsaha; 
+                closestCandidateName = getRowValue(mRec.originalRow, colMasterNama); 
+              }
             }
           }
+          
+          const rowScraping = sRec.originalRow;
           unmatchedList.push({ 
-            similarity_score: Math.round(maxScore * 100) / 100, 
+            similarity_score: Math.round(maxScore), 
             scraping_nama_usaha: sRec.scrapNama,
-            scraping_alamat: getRowValue(rowScraping, colScrapAlamat), 
-            scraping_jenis_usaha: getRowValue(rowScraping, colScrapJenis),
+            scraping_kab_kota: getRowValue(rowScraping, colScrapKabKota),
+            scraping_titik_lokasi: getRowValue(rowScraping, colScrapTitikLokasi),
             closest_candidate: closestCandidateName 
           });
         }
