@@ -22,7 +22,8 @@ import Image from 'next/image';
 const navigation = [
   // Menu untuk SEMUA user
   { name: 'Beranda', href: '/', icon: LayoutDashboard, requiresSuperadmin: false },
-  { name: 'Matching Data', href: '/matching', icon: GitCompare, requiresSuperadmin: false },
+  { name: 'Matching Data Usaha', href: '/matching_usaha', icon: GitCompare, requiresSuperadmin: false },
+  { name: 'Matching Data ASN', href: '/matching_asn', icon: GitCompare, requiresSuperadmin: false },
   { name: 'Review CSV', href: '/review', icon: FileCheck2, requiresSuperadmin: false },
   { name: 'Riwayat Matching', href: '/history', icon: History, requiresSuperadmin: false },
   
