@@ -2,47 +2,86 @@ import { NextResponse } from 'next/server';
 import Papa from 'papaparse';
 import * as fuzzball from 'fuzzball';
 
+// ==================== UTILITAS PEMBERSIHAN ====================
+
 // Gelar/title yang umum pada nama ASN — dihapus sebelum matching
 const TITLE_PATTERNS = [
-  /,\s*/g,  // koma pemisah gelar
+  /,\s*/g,
   /\b(S\.?H|S\.?E|S\.?S|S\.?T|S\.?Pd|S\.?Sos|S\.?Si|S\.?Kom|S\.?Ag|S\.?Hut|S\.?Ked|S\.?KM|S\.?Gz|S\.?Farm|S\.?Kep|S\.?IP|S\.?Pt|S\.?Pi|S\.?Psi)\b/gi,
   /\b(M\.?M|M\.?A|M\.?Si|M\.?Pd|M\.?Kes|M\.?Sc|M\.?Hum|M\.?Kom|M\.?H|M\.?Eng|M\.?Kn|M\.?AP|M\.?I\.?Kom|M\.?T)\b/gi,
   /\b(Dr|Drs|Dra|Ir|Prof|Apt|Ns)\b\.?/gi,
   /\b(Ph\.?D|MBA|MPA|Sp\.\w+)\b/gi,
 ];
 
-// Fungsi membersihkan nama dengan menghilangkan gelar
+/**
+ * Membersihkan nama orang — hapus gelar, lowercase, buang karakter non-alfabet.
+ */
 function cleanPersonName(text: any): string {
   if (text === null || text === undefined) return "";
   let t = String(text).trim();
 
-  // Hapus semua gelar
   for (const pattern of TITLE_PATTERNS) {
     t = t.replace(pattern, ' ');
   }
 
-  // Bersihkan karakter non-alfabet, lowercase, dan hilangkan spasi berlebih
   t = t.replace(/[^a-z\s]/gi, ' ').toLowerCase();
   const words = t.split(/\s+/).filter(w => w.length > 1);
+  const result = words.join(" ").trim();
+
+  // Safeguard: Jika kolom sebenarnya berisi angka/NIK tapi pengguna memilih tipe 'name',
+  // jangan sampai nilainya kosong (yang menyebabkan 0 match).
+  if (!result && String(text).trim().length > 0) {
+    return cleanIdentifier(text);
+  }
+
+  return result;
+}
+
+/**
+ * Membersihkan teks biasa — lowercase, hapus karakter spesial, trim.
+ */
+function cleanPlainText(text: any): string {
+  if (text === null || text === undefined) return "";
+  let t = String(text).trim().toLowerCase();
+  // Buang trailing .0 jika ada (misal float dari export Excel)
+  t = t.replace(/\.0+$/, '');
+  t = t.replace(/[^a-z0-9\s]/gi, ' ');
+  const words = t.split(/\s+/).filter(w => w.length > 0);
   return words.join(" ").trim();
 }
 
-// Deteksi nama kolom secara fleksibel
-function findColumnName(columns: string[], possibleNames: string[]): string | undefined {
-  const cleanCols = new Map<string, string>();
-  for (const col of columns) { cleanCols.set(col.replace(/[^a-z0-9]/gi, '').toLowerCase(), col); }
-  for (const name of possibleNames) {
-    const cleanTarget = name.replace(/[^a-z0-9]/gi, '').toLowerCase();
-    if (cleanCols.has(cleanTarget)) return cleanCols.get(cleanTarget);
-  }
-  // Fallback: partial match
-  for (const name of possibleNames) {
-    const cleanTarget = name.replace(/[^a-z0-9]/gi, '').toLowerCase();
-    for (const [cleanCol, originalCol] of cleanCols) {
-      if (cleanCol.includes(cleanTarget) || cleanTarget.includes(cleanCol)) return originalCol;
+/**
+ * Membersihkan identifier/kode (NIK, NIP, kode wilayah, nomor register, dll.)
+ * Menghapus SEMUA karakter selain huruf dan angka — tanpa spasi.
+ * Menangani kutip Excel, formula ="...", trailing .0, dan notasi ilmiah.
+ * Contoh: "71.71.01.2345.6789.01" → "7171012345678901"
+ */
+function cleanIdentifier(text: any): string {
+  if (text === null || text === undefined) return "";
+  let t = String(text).trim();
+
+  // Hapus kutip satu/dua di awal & akhir (format text Excel sering: '717101...)
+  t = t.replace(/^['"]+|['"]+$/g, '');
+
+  // Hapus formula Excel ="..." jika ada
+  t = t.replace(/^="?([^"]*)"?$/, '$1');
+
+  // Hapus trailing .0 atau .00 (kasus float dari Excel/Pandas)
+  t = t.replace(/\.0+$/, '');
+
+  // Tangani scientific notation (misal: 7.17101E+15 dari Excel)
+  if (/^[0-9]+(?:\.[0-9]+)?[eE]\+?[0-9]+$/i.test(t)) {
+    try {
+      const num = Number(t);
+      if (!isNaN(num)) {
+        t = BigInt(Math.floor(num)).toString();
+      }
+    } catch {
+      // fallback tetap menggunakan t
     }
   }
-  return undefined;
+
+  return t.replace(/[^a-z0-9]/gi, '').toLowerCase();
 }
 
 function getRowValue(row: any, colName: string | undefined): string {
@@ -52,58 +91,71 @@ function getRowValue(row: any, colName: string | undefined): string {
   return String(val).trim();
 }
 
+// ==================== INTERFACE ====================
+
+interface MatchConfig {
+  col_file1: string;
+  col_file2: string;
+  type: 'name' | 'text' | 'id';
+}
+
+// ==================== HANDLER ====================
+
 export async function POST(request: Request) {
   let formData: FormData;
-  try { formData = await request.formData(); }
-  catch { return NextResponse.json({ detail: "Gagal membaca form data." }, { status: 400 }); }
-
-  const fileSeAsn = formData.get('file_se_asn') as File | null;
-  const fileAsnKota = formData.get('file_asn_kota') as File | null;
-  const thresholdInput = formData.get('threshold');
-  const threshold = thresholdInput ? Number(thresholdInput) : 80;
-
-  if (!fileSeAsn || !fileAsnKota) {
-    return NextResponse.json({ detail: "Kedua file CSV (SE ASN & ASN Kota Manado) wajib diunggah." }, { status: 400 });
+  try {
+    formData = await request.formData();
+  } catch {
+    return NextResponse.json({ detail: "Gagal membaca form data." }, { status: 400 });
   }
 
-  const textSeAsn = await fileSeAsn.text();
-  const textAsnKota = await fileAsnKota.text();
+  const file1 = formData.get('file_1') as File | null;
+  const file2 = formData.get('file_2') as File | null;
+  const thresholdInput = formData.get('threshold');
+  const threshold = thresholdInput ? Number(thresholdInput) : 80;
+  const matchConfigRaw = formData.get('match_config') as string | null;
 
-  const parsedSeAsn = Papa.parse(textSeAsn, { header: true, skipEmptyLines: "greedy" });
-  const parsedAsnKota = Papa.parse(textAsnKota, { header: true, skipEmptyLines: "greedy" });
+  if (!file1 || !file2) {
+    return NextResponse.json({ detail: "Kedua file CSV wajib diunggah." }, { status: 400 });
+  }
 
-  const seAsnRows = parsedSeAsn.data as any[];
-  const asnKotaRows = parsedAsnKota.data as any[];
+  // Parse match config
+  let matchConfig: MatchConfig[];
+  try {
+    matchConfig = matchConfigRaw ? JSON.parse(matchConfigRaw) : [];
+  } catch {
+    return NextResponse.json({ detail: "Format konfigurasi kolom matching tidak valid." }, { status: 400 });
+  }
 
-  if (seAsnRows.length === 0 || asnKotaRows.length === 0) {
+  if (matchConfig.length === 0) {
+    return NextResponse.json({ detail: "Minimal satu pasangan kolom matching harus dipilih." }, { status: 400 });
+  }
+
+  // Parse kedua CSV
+  const text1 = await file1.text();
+  const text2 = await file2.text();
+
+  const parsed1 = Papa.parse(text1, { header: true, skipEmptyLines: "greedy" });
+  const parsed2 = Papa.parse(text2, { header: true, skipEmptyLines: "greedy" });
+
+  const rows1 = parsed1.data as any[];
+  const rows2 = parsed2.data as any[];
+
+  if (rows1.length === 0 || rows2.length === 0) {
     return NextResponse.json({ detail: "Salah satu atau kedua file CSV tidak memiliki baris data." }, { status: 400 });
   }
 
-  const seAsnHeaders = parsedSeAsn.meta.fields || Object.keys(seAsnRows[0]);
-  const asnKotaHeaders = parsedAsnKota.meta.fields || Object.keys(asnKotaRows[0]);
+  const headers1 = parsed1.meta.fields || Object.keys(rows1[0]);
+  const headers2 = parsed2.meta.fields || Object.keys(rows2[0]);
 
-  // ----------------------------------------------------------------------
-  // KOLOM FILE SE ASN (Data Referensi / "Master")
-  // Kolom: Nama Penduduk | Kode Wilayah(NIK) | Link
-  // ----------------------------------------------------------------------
-  const colSeAsnNama = findColumnName(seAsnHeaders, ["Nama Penduduk", "NamaPenduduk", "nama_penduduk", "nama"]);
-  const colSeAsnKodeWilayah = findColumnName(seAsnHeaders, ["Kode Wilayah(NIK)", "KodeWilayahNIK", "Kode Wilayah", "kode_wilayah", "NIK"]);
-  const colSeAsnLink = findColumnName(seAsnHeaders, ["Link", "link", "link_fasih", "url"]);
-
-  if (!colSeAsnNama) {
-    return NextResponse.json({ detail: "Kolom 'Nama Penduduk' tidak ditemukan di File SE ASN." }, { status: 400 });
-  }
-
-  // ----------------------------------------------------------------------
-  // KOLOM FILE ASN KOTA MANADO (Data Target)
-  // Kolom: No | Nama | NIP | Unit Kerja
-  // ----------------------------------------------------------------------
-  const colAsnNama = findColumnName(asnKotaHeaders, ["Nama", "nama", "nama_asn"]);
-  const colAsnNip = findColumnName(asnKotaHeaders, ["NIP", "nip"]);
-  const colAsnUnitKerja = findColumnName(asnKotaHeaders, ["Unit Kerja", "UnitKerja", "unit_kerja", "instansi"]);
-
-  if (!colAsnNama) {
-    return NextResponse.json({ detail: "Kolom 'Nama' tidak ditemukan di File ASN Kota Manado." }, { status: 400 });
+  // Validasi kolom yang dipilih ada di file
+  for (const mc of matchConfig) {
+    if (!headers1.includes(mc.col_file1)) {
+      return NextResponse.json({ detail: `Kolom "${mc.col_file1}" tidak ditemukan di File 1.` }, { status: 400 });
+    }
+    if (!headers2.includes(mc.col_file2)) {
+      return NextResponse.json({ detail: `Kolom "${mc.col_file2}" tidak ditemukan di File 2.` }, { status: 400 });
+    }
   }
 
   // ========== STREAMING RESPONSE ==========
@@ -115,133 +167,217 @@ export async function POST(request: Request) {
       }
 
       try {
-        sendEvent({ type: "progress", phase: "Membersihkan data SE ASN & ASN Kota Manado...", current: 0, total: asnKotaRows.length, percent: 0 });
+        // --------- Fase 1: Persiapan Data ---------
+        sendEvent({ type: "progress", phase: "Membersihkan data...", current: 0, total: rows2.length, percent: 0 });
         await new Promise(resolve => setTimeout(resolve, 10));
 
-        // Bersihkan data SE ASN (referensi)
-        const cleanSeAsnRecords = seAsnRows.map((row, idx) => {
-          const namaAsli = getRowValue(row, colSeAsnNama);
-          const namaClean = cleanPersonName(namaAsli);
-          return { originalIndex: idx, originalRow: row, namaAsli, namaClean };
+        // Fungsi untuk membersihkan nilai berdasarkan tipe
+        function cleanValue(val: string, type: 'name' | 'text' | 'id'): string {
+          if (type === 'name') return cleanPersonName(val);
+          if (type === 'id') return cleanIdentifier(val);
+          return cleanPlainText(val);
+        }
+
+        // Pre-compute cleaned values untuk File 1 (Referensi)
+        const cleanRecords1 = rows1.map((row, idx) => {
+          const cleanedPairs: Record<string, string> = {};
+          for (const mc of matchConfig) {
+            const rawVal = getRowValue(row, mc.col_file1);
+            cleanedPairs[mc.col_file1] = cleanValue(rawVal, mc.type);
+          }
+          return { idx, row, cleanedPairs };
         });
 
-        // Bersihkan data ASN Kota (target)
-        const cleanAsnKotaRecords = asnKotaRows.map((row, idx) => {
-          const namaAsli = getRowValue(row, colAsnNama);
-          const namaClean = cleanPersonName(namaAsli);
-          return { originalIndex: idx, originalRow: row, namaAsli, namaClean };
+        // Pre-compute cleaned values untuk File 2 (Target)
+        const cleanRecords2 = rows2.map((row, idx) => {
+          const cleanedPairs: Record<string, string> = {};
+          for (const mc of matchConfig) {
+            const rawVal = getRowValue(row, mc.col_file2);
+            cleanedPairs[mc.col_file2] = cleanValue(rawVal, mc.type);
+          }
+          return { idx, row, cleanedPairs };
         });
 
-        const totalAsnKota = cleanAsnKotaRecords.length;
+        const totalTarget = cleanRecords2.length;
 
-        // Fase 2: Proses Matching (Fuzzy match Nama ASN vs Nama Penduduk SE ASN)
-        sendEvent({ type: "progress", phase: "Mencocokkan nama ASN dengan SE ASN...", current: 0, total: totalAsnKota, percent: 0 });
+        // --------- Fase 2: Proses Matching ---------
+        sendEvent({ type: "progress", phase: "Mencocokkan data...", current: 0, total: totalTarget, percent: 0 });
         await new Promise(resolve => setTimeout(resolve, 10));
 
-        interface MatchPair { asnIdx: number; seAsnIdx: number; score: number; }
+        interface MatchPair { targetIdx: number; refIdx: number; score: number; }
         const possibleMatches: MatchPair[] = [];
 
-        for (let i = 0; i < cleanAsnKotaRecords.length; i++) {
-          const asnRec = cleanAsnKotaRecords[i];
-          if (!asnRec.namaClean || asnRec.namaClean.length <= 2) continue;
+        for (let i = 0; i < cleanRecords2.length; i++) {
+          const rec2 = cleanRecords2[i];
 
-          for (const seRec of cleanSeAsnRecords) {
-            if (!seRec.namaClean || seRec.namaClean.length <= 2) continue;
+          // Cek minimal ada 1 kolom yang cleaned-nya valid (panjang > 2)
+          const hasValidTarget = matchConfig.some(mc => {
+            const v = rec2.cleanedPairs[mc.col_file2];
+            return v && v.length > 2;
+          });
+          if (!hasValidTarget) {
+            // Skip baris target yang tidak punya data matching valid
+            if ((i + 1) % 10 === 0 || i === cleanRecords2.length - 1) {
+              const percent = Math.round(((i + 1) / totalTarget) * 100);
+              sendEvent({ type: "progress", phase: "Mencocokkan data...", current: i + 1, total: totalTarget, percent });
+              await new Promise(resolve => setTimeout(resolve, 2));
+            }
+            continue;
+          }
 
-            const score = fuzzball.ratio(asnRec.namaClean, seRec.namaClean);
+          for (const rec1 of cleanRecords1) {
+            // Hitung skor per pasangan kolom
+            let totalScore = 0;
+            let validPairs = 0;
 
-            if (score >= threshold) {
+            for (const mc of matchConfig) {
+              const val2 = rec2.cleanedPairs[mc.col_file2];
+              const val1 = rec1.cleanedPairs[mc.col_file1];
+
+              if ((!val1 || val1.length <= 2) && (!val2 || val2.length <= 2)) {
+                // Kedua kolom kosong/terlalu pendek — skip pasangan ini
+                continue;
+              }
+
+              const score = fuzzball.ratio(val2 || '', val1 || '');
+              totalScore += score;
+              validPairs++;
+            }
+
+            if (validPairs === 0) continue;
+            const avgScore = Math.round(totalScore / validPairs);
+
+            if (avgScore >= threshold) {
               possibleMatches.push({
-                asnIdx: asnRec.originalIndex,
-                seAsnIdx: seRec.originalIndex,
-                score
+                targetIdx: rec2.idx,
+                refIdx: rec1.idx,
+                score: avgScore,
               });
             }
           }
 
-          if ((i + 1) % 10 === 0 || i === cleanAsnKotaRecords.length - 1) {
-            const percent = Math.round(((i + 1) / totalAsnKota) * 100);
-            sendEvent({ type: "progress", phase: "Mencocokkan nama ASN dengan SE ASN...", current: i + 1, total: totalAsnKota, percent });
+          if ((i + 1) % 10 === 0 || i === cleanRecords2.length - 1) {
+            const percent = Math.round(((i + 1) / totalTarget) * 100);
+            sendEvent({ type: "progress", phase: "Mencocokkan data...", current: i + 1, total: totalTarget, percent });
             await new Promise(resolve => setTimeout(resolve, 2));
           }
         }
 
-        // Fase 3: Menyusun hasil akhir
-        sendEvent({ type: "progress", phase: "Menyusun hasil akhir...", current: totalAsnKota, total: totalAsnKota, percent: 99 });
+        // --------- Fase 3: Menyusun Hasil ---------
+        sendEvent({ type: "progress", phase: "Menyusun hasil akhir...", current: totalTarget, total: totalTarget, percent: 99 });
 
-        // Sortir skor tertinggi lebih dulu
+        // Sortir skor tertinggi lebih dulu (greedy 1:1 matching)
         possibleMatches.sort((a, b) => b.score - a.score);
 
-        const matchedAsnIndices = new Set<number>();
-        const matchedSeAsnIndices = new Set<number>();
+        const matchedTargetIdx = new Set<number>();
+        const matchedRefIdx = new Set<number>();
         const matchedList: any[] = [];
 
         for (const match of possibleMatches) {
-          if (matchedAsnIndices.has(match.asnIdx) || matchedSeAsnIndices.has(match.seAsnIdx)) continue;
-          matchedAsnIndices.add(match.asnIdx);
-          matchedSeAsnIndices.add(match.seAsnIdx);
+          if (matchedTargetIdx.has(match.targetIdx) || matchedRefIdx.has(match.refIdx)) continue;
+          matchedTargetIdx.add(match.targetIdx);
+          matchedRefIdx.add(match.refIdx);
 
-          const asnRec = cleanAsnKotaRecords[match.asnIdx];
-          const seRec = cleanSeAsnRecords[match.seAsnIdx];
-          const rowAsn = asnRec.originalRow;
-          const rowSeAsn = seRec.originalRow;
+          const rec2 = cleanRecords2[match.targetIdx];
+          const rec1 = cleanRecords1[match.refIdx];
 
-          matchedList.push({
-            similarity_score: match.score,
+          // Build row dengan semua kolom dari kedua file
+          const resultRow: any = { similarity_score: match.score };
 
-            // Kolom ASN Kota Manado
-            asn_nama: asnRec.namaAsli,
-            asn_nip: getRowValue(rowAsn, colAsnNip),
-            asn_unit_kerja: getRowValue(rowAsn, colAsnUnitKerja),
+          // Kolom file 2 (target) — prefix "file2_"
+          for (const h of headers2) {
+            resultRow[`file2_${h}`] = getRowValue(rec2.row, h);
+          }
 
-            // Kolom SE ASN (hasil matching)
-            se_asn_nama: seRec.namaAsli,
-            se_asn_kode_wilayah: getRowValue(rowSeAsn, colSeAsnKodeWilayah),
-            se_asn_link: getRowValue(rowSeAsn, colSeAsnLink),
-          });
+          // Kolom file 1 (referensi) — prefix "file1_"
+          for (const h of headers1) {
+            resultRow[`file1_${h}`] = getRowValue(rec1.row, h);
+          }
+
+          matchedList.push(resultRow);
         }
 
+        // Data yang tidak cocok (unmatched) — dari target
         const unmatchedList: any[] = [];
-        for (const asnRec of cleanAsnKotaRecords) {
-          if (matchedAsnIndices.has(asnRec.originalIndex)) continue;
+        for (const rec2 of cleanRecords2) {
+          if (matchedTargetIdx.has(rec2.idx)) continue;
 
-          let closestCandidateName = "-";
-          let maxScore = 0;
+          // Cari kandidat terdekat
+          let closestScore = 0;
+          let closestRefIdx = -1;
 
-          if (asnRec.namaClean && asnRec.namaClean.length > 2) {
-            for (const seRec of cleanSeAsnRecords) {
-              if (!seRec.namaClean || seRec.namaClean.length <= 2) continue;
-              const score = fuzzball.ratio(asnRec.namaClean, seRec.namaClean);
-              if (score > maxScore) {
-                maxScore = score;
-                closestCandidateName = seRec.namaAsli;
+          const hasValidTarget = matchConfig.some(mc => {
+            const v = rec2.cleanedPairs[mc.col_file2];
+            return v && v.length > 2;
+          });
+
+          if (hasValidTarget) {
+            for (const rec1 of cleanRecords1) {
+              let totalScore = 0;
+              let validPairs = 0;
+
+              for (const mc of matchConfig) {
+                const val2 = rec2.cleanedPairs[mc.col_file2];
+                const val1 = rec1.cleanedPairs[mc.col_file1];
+
+                if ((!val1 || val1.length <= 2) && (!val2 || val2.length <= 2)) continue;
+
+                const score = fuzzball.ratio(val2 || '', val1 || '');
+                totalScore += score;
+                validPairs++;
+              }
+
+              if (validPairs === 0) continue;
+              const avgScore = Math.round(totalScore / validPairs);
+
+              if (avgScore > closestScore) {
+                closestScore = avgScore;
+                closestRefIdx = rec1.idx;
               }
             }
           }
 
-          const rowAsn = asnRec.originalRow;
-          unmatchedList.push({
-            similarity_score: Math.round(maxScore),
-            asn_nama: asnRec.namaAsli,
-            asn_nip: getRowValue(rowAsn, colAsnNip),
-            asn_unit_kerja: getRowValue(rowAsn, colAsnUnitKerja),
-            closest_candidate: closestCandidateName,
-          });
+          const resultRow: any = {
+            similarity_score: closestScore,
+          };
+
+          // Kolom file 2 (target)
+          for (const h of headers2) {
+            resultRow[`file2_${h}`] = getRowValue(rec2.row, h);
+          }
+
+          // Kandidat terdekat dari file 1 — hanya kolom matching saja
+          if (closestRefIdx >= 0) {
+            const closestRec1 = cleanRecords1[closestRefIdx];
+            for (const mc of matchConfig) {
+              resultRow[`closest_file1_${mc.col_file1}`] = getRowValue(closestRec1.row, mc.col_file1);
+            }
+          } else {
+            for (const mc of matchConfig) {
+              resultRow[`closest_file1_${mc.col_file1}`] = "-";
+            }
+          }
+
+          unmatchedList.push(resultRow);
         }
 
-        const totalSeAsn = seAsnRows.length;
-        const overallPercentage = totalAsnKota > 0 ? Math.round((matchedList.length / totalAsnKota * 100) * 100) / 100 : 0.0;
+        const overallPercentage = totalTarget > 0
+          ? Math.round((matchedList.length / totalTarget * 100) * 100) / 100
+          : 0.0;
 
         sendEvent({
           type: "result",
           data: {
             summary: {
-              total_asn_kota_rows: totalAsnKota,
-              total_se_asn_rows: totalSeAsn,
+              total_file1_rows: rows1.length,
+              total_file2_rows: totalTarget,
               matched_count: matchedList.length,
               unmatched_count: unmatchedList.length,
               overall_matched_percentage: overallPercentage,
             },
+            file1_headers: headers1,
+            file2_headers: headers2,
+            match_columns: matchConfig,
             matched_data: matchedList,
             unmatched_data: unmatchedList,
           }

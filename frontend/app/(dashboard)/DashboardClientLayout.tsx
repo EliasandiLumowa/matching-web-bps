@@ -25,22 +25,22 @@ const navigation = [
   { name: 'Matching Data Usaha', href: '/matching_usaha', icon: GitCompare, requiresSuperadmin: false },
   { name: 'Matching Data ASN', href: '/matching_asn', icon: GitCompare, requiresSuperadmin: false },
   { name: 'Review CSV', href: '/review', icon: FileCheck2, requiresSuperadmin: false },
-  { name: 'Riwayat Matching', href: '/history', icon: History, requiresSuperadmin: false },
+  // { name: 'Riwayat Matching', href: '/history', icon: History, requiresSuperadmin: false },
   
   // Menu KHUSUS Superadmin
-  { 
-    name: 'Akun Management', 
-    href: process.env.NEXT_PUBLIC_STRAPI_ADMIN_URL || 'http://localhost:1337/admin', 
-    icon: Users, 
-    external: true,
-    requiresSuperadmin: true 
-  },
-  { 
-    name: 'History Akun Matched', 
-    href: '/history/user_matched', 
-    icon: MonitorCheck, 
-    requiresSuperadmin: true 
-  },
+  // { 
+  //   name: 'Akun Management', 
+  //   href: process.env.NEXT_PUBLIC_STRAPI_ADMIN_URL || 'http://localhost:1337/admin', 
+  //   icon: Users, 
+  //   external: true,
+  //   requiresSuperadmin: true 
+  // },
+  // { 
+  //   name: 'History Akun Matched', 
+  //   href: '/history/user_matched', 
+  //   icon: MonitorCheck, 
+  //   requiresSuperadmin: true 
+  // },
 ];
 
 interface UserSession {
@@ -57,30 +57,12 @@ export default function DashboardClientLayout({
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
-  const [userData, setUserData] = useState<UserSession | null>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
-
-  useEffect(() => {
-    const fetchSession = async () => {
-      try {
-        const res = await fetch('/api/auth/session');
-        if (res.ok) {
-          const json = await res.json();
-          setUserData(json.user);
-        }
-      } catch (err) {
-        console.error("Gagal menarik sesi pengguna");
-      } finally {
-        setLoadingUser(false);
-      }
-    };
-    fetchSession();
-  }, []);
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/login';
-  };
+  const [userData, setUserData] = useState<UserSession | null>({
+    username: 'Administrator',
+    email: 'admin@bps.go.id',
+    is_superadmin: true
+  });
+  const [loadingUser, setLoadingUser] = useState(false);
 
   // Identifikasi apakah user adalah Superadmin
   const isSuperadmin = userData?.is_superadmin === true;
@@ -116,7 +98,7 @@ export default function DashboardClientLayout({
               </div>
               <div>
                 <span className="font-bold text-sm tracking-wide text-white">MATCHSTAT</span>
-                <span className="block text-[10px] text-slate-400">Enterprise Security</span>
+                {/* <span className="block text-[10px] text-slate-400">Enterprise Security</span> */}
               </div>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400">
@@ -134,21 +116,21 @@ export default function DashboardClientLayout({
               const Icon = item.icon;
 
               // Logika untuk Link Eksternal (Strapi Admin)
-              if (item.external) {
-                return (
-                  <a
-                    key={item.name}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setSidebarOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.name}
-                  </a>
-                );
-              }
+              // if (item.external) {
+              //   return (
+              //     <a
+              //       key={item.name}
+              //       href={item.href}
+              //       target="_blank"
+              //       rel="noopener noreferrer"
+              //       onClick={() => setSidebarOpen(false)}
+              //       className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all text-slate-400 hover:bg-slate-800/60 hover:text-slate-100"
+              //     >
+              //       <Icon className="w-4 h-4" />
+              //       {item.name}
+              //     </a>
+              //   );
+              // }
 
               // Logika untuk Route Internal Aplikasi
               return (
@@ -171,7 +153,7 @@ export default function DashboardClientLayout({
         </div>
 
         {/* User Info & Logout */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50">
+        {/* <div className="p-4 border-t border-slate-800 bg-slate-950/50">
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-slate-200 shrink-0">
               {loadingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <User className="w-5 h-5" />}
@@ -192,17 +174,11 @@ export default function DashboardClientLayout({
               )}
             </div>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium text-red-400 hover:bg-red-950/30 hover:text-red-300 rounded-lg transition"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Keluar Sistem
-          </button>
+
           <div className="mt-2 text-center text-[10px] text-slate-500 font-mono">
             Matchstat Version {process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'}
           </div>
-        </div>
+        </div> */}
       </aside>
 
       {/* Main Content Area */}
